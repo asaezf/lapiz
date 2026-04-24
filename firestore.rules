@@ -1,0 +1,48 @@
+rules_version = '2';
+
+// Reglas para beta. Seguras frente a usuarios no autenticados y jugadores
+// que intenten escribir cosas que no les corresponden. No es fortaleza total:
+// un cliente malicioso autenticado aún puede meter texto raro en sus propias
+// respuestas, pero no puede escribir las de otro ni alterar el estado global
+// si no es host.
+service cloud.firestore {
+  match /databases/{db}/documents {
+
+    function signedIn() { return request.auth != null; }
+    function uid() { return request.auth.uid; }
+    function room(roomId) { return get(/databases/$(db)/documents/rooms/$(roomId)).data; }
+    function isHost(roomId) { return signedIn() && room(roomId).hostId == uid(); }
+
+    match /rooms/{roomId} {
+      allow read: if signedIn();
+      // crear: solo si el que crea se pone como host
+      allow create: if signedIn() && request.resource.data.hostId == uid();
+      // actualizar: solo el host (transiciones de estado, letras, etc.)
+      allow update: if isHost(roomId);
+      allow delete: if false;
+
+      match /players/{playerId} {
+        allow read: if signedIn();
+        // un jugador solo puede crear/editar su propio documento
+        allow create, update: if signedIn() && playerId == uid();
+        // el host puede actualizar scores (aunque normalmente se hace con increment en batch del propio jugador autenticado como host)
+        allow update: if isHost(roomId);
+        allow delete: if signedIn() && (playerId == uid() || isHost(roomId));
+      }
+
+      match /rounds/{roundId} {
+        allow read: if signedIn();
+        allow create, update: if isHost(roomId);
+        allow delete: if false;
+
+        match /answers/{playerId} {
+          allow read: if signedIn();
+          // cada jugador solo escribe su propio doc de respuestas.
+          // el host escribe en todos al calcular scores.
+          allow create, update: if signedIn() && (playerId == uid() || isHost(roomId));
+          allow delete: if false;
+        }
+      }
+    }
+  }
+}
