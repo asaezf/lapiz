@@ -8,20 +8,28 @@ export type RoomStatus =
   | "scoreboard"
   | "finished";
 
+export type GameMode = "dynamic" | "classic";
+
 export interface RoomConfig {
   forbiddenLetterEnabled: boolean;
   bonusLetterEnabled: boolean;
   multiplierEnabled: boolean;
-  totalRounds: number;
-  categoriesPerRound: number; // 3-8
+  longestWordBonusEnabled: boolean;
+  customCategoryEnabled: boolean;
+  totalRounds: number;        // 3-10
+  categoriesPerRound: number; // 5 a (banco + 1 si custom)
+  gameMode: GameMode;
 }
 
 export const DEFAULT_CONFIG: RoomConfig = {
   forbiddenLetterEnabled: true,
   bonusLetterEnabled: true,
   multiplierEnabled: true,
+  longestWordBonusEnabled: true,
+  customCategoryEnabled: true,
   totalRounds: 5,
   categoriesPerRound: 5,
+  gameMode: "dynamic",
 };
 
 export interface Room {
@@ -58,7 +66,7 @@ export interface Player {
 
 export interface AnswerEntry {
   word: string;
-  votesFor: string[];
+  votesFor?: string[]; // legado, ya no se usa
   votesAgainst: string[];
   isValid: boolean;
   points: number;

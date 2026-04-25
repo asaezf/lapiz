@@ -6,7 +6,6 @@ export function normalize(w: string): string {
 
 export interface RawAnswer {
   word: string;
-  votesFor: string[];
   votesAgainst: string[];
 }
 
@@ -50,10 +49,11 @@ export function calculateScores(input: ScoringInput): ScoringResult {
       const nw = normalize(a.word);
       if (!nw.startsWith(nLetter)) { perAnswer[pid][cat] = { isValid: false, points: 0 }; continue; }
       if (nForbidden && nw.includes(nForbidden)) { perAnswer[pid][cat] = { isValid: false, points: 0 }; continue; }
-      // votos: inválida si contras > favores (empate o 0 votos → válida)
+      // Inválida si MAYORÍA de votantes elegibles (todos menos el autor) vota 👎.
+      // eligibleVoters = jugadores totales - 1 (el autor).
       const against = new Set(a.votesAgainst || []).size;
-      const favor = new Set(a.votesFor || []).size;
-      if (against > favor && (against + favor) > 0) {
+      const eligibleVoters = playerIds.length - 1;
+      if (eligibleVoters > 0 && against > eligibleVoters / 2) {
         perAnswer[pid][cat] = { isValid: false, points: 0 }; continue;
       }
       validByPlayer[pid] = nw;
@@ -67,10 +67,14 @@ export function calculateScores(input: ScoringInput): ScoringResult {
     for (const pid of playerIds) {
       const nw = validByPlayer[pid];
       if (!nw) continue;
-      let pts = counts[nw] > 1 ? 5 : 10;
-      if (nBonus && nw.includes(nBonus)) pts += 3;
+      // Base: 2 si única, 1 si repetida (entre las válidas)
+      let pts = counts[nw] > 1 ? 1 : 2;
+      // +1 si contiene la letra bonus (configurable)
+      if (nBonus && nw.includes(nBonus)) pts += 1;
+      // +1 si es la palabra válida más larga de la categoría (configurable)
+      if (config.longestWordBonusEnabled && nw.length === maxLen && maxLen > 0) pts += 1;
+      // ×2 si esta categoría es la multiplicadora (configurable)
       if (config.multiplierEnabled && cat === multiplierCategoryIndex) pts *= 2;
-      if (nw.length === maxLen && maxLen > 0) pts += 5;
       perAnswer[pid][cat] = { isValid: true, points: pts };
       scoreDelta[pid] += pts;
     }

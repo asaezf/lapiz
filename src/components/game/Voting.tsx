@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import type { Room, Player } from "@/game/types";
 import { useRound } from "@/hooks/useRound";
 import { applyScores, toggleVote } from "@/lib/round";
@@ -15,76 +15,68 @@ interface Props {
 export function Voting({ code, room, userId, isHost, players }: Props) {
   const roundIdx = room.currentRound;
   const { answers } = useRound(code, roundIdx);
-  const [remaining, setRemaining] = useState<number>(90);
   const appliedRef = useRef(false);
   const [showHelp, setShowHelp] = useState(true);
+  const [closing, setClosing] = useState(false);
 
-  const endsMs = room.votingEndsAt ? (room.votingEndsAt as any).toMillis() : null;
-
-  useEffect(() => {
-    if (!endsMs) return;
-    const tick = () => {
-      const left = Math.max(0, Math.ceil((endsMs - Date.now()) / 1000));
-      setRemaining(left);
-      if (left === 0 && isHost && !appliedRef.current) {
-        appliedRef.current = true;
-        applyScores(code, roundIdx, room, players.map((p) => p.id)).catch(() => { appliedRef.current = false; });
-      }
-    };
-    tick();
-    const id = setInterval(tick, 500);
-    return () => clearInterval(id);
-  }, [endsMs, isHost, code, roundIdx, room, players]);
-
-  const playerName = (id: string) => players.find((p) => p.id === id)?.nickname || id.slice(0, 4);
-
-  const handleVote = (authorId: string, catIdx: number, voteType: "for" | "against") => {
+  const handleVote = (authorId: string, catIdx: number) => {
     const entry = answers.find((a) => a.id === authorId)?.words[catIdx];
-    const currentFor = entry?.votesFor || [];
     const currentAgainst = entry?.votesAgainst || [];
-    toggleVote(code, roundIdx, authorId, catIdx, userId, currentFor, currentAgainst, voteType);
+    toggleVote(code, roundIdx, authorId, catIdx, userId, currentAgainst);
   };
+
+  const handleCloseVoting = async () => {
+    if (appliedRef.current) return;
+    appliedRef.current = true;
+    setClosing(true);
+    try {
+      await applyScores(code, roundIdx, room, players.map((p) => p.id));
+    } catch {
+      appliedRef.current = false;
+      setClosing(false);
+    }
+  };
+
+  const eligibleVoters = Math.max(0, players.length - 1);
+  const majorityNeeded = Math.floor(eligibleVoters / 2) + 1; // estricto: > mitad
 
   return (
     <div className="flex flex-col gap-4 flex-1">
-      {/* Header con timer */}
+      {/* Header */}
       <div className="flex items-center justify-between">
         <h2 className="text-sm uppercase text-zinc-500 font-semibold">Votación</h2>
-        <div className={
-          "text-2xl font-black tabular-nums " +
-          (remaining <= 15 ? "text-danger animate-pulse" : "text-accent")
-        }>
-          {remaining}s
-        </div>
+        <span className="text-xs text-zinc-500">
+          {players.length} jugadores · {majorityNeeded > 0 ? `${majorityNeeded} 👎 = inválida` : ""}
+        </span>
       </div>
 
-      {/* Instrucciones colapsables */}
+      {/* Instrucciones */}
       {showHelp && (
         <div className="bg-panel rounded-xl p-3 border border-zinc-800 text-xs text-zinc-400 relative">
           <button
             onClick={() => setShowHelp(false)}
             className="absolute top-2 right-3 text-zinc-600 hover:text-zinc-300 text-sm"
+            aria-label="Cerrar ayuda"
           >
             ✕
           </button>
           <div className="font-bold text-zinc-300 mb-2 text-sm">📋 Cómo votar</div>
           <ul className="list-disc list-inside space-y-1 mb-3">
-            <li><span className="text-good">👍</span> = palabra válida y bien usada</li>
-            <li><span className="text-danger">👎</span> = palabra inventada, mal usada o trampa</li>
-            <li>Si <span className="text-danger">👎 &gt; 👍</span> → la palabra es <strong className="text-danger">inválida (0 pts)</strong></li>
-            <li>Empate o sin votos → la palabra es <strong className="text-good">válida</strong></li>
+            <li>Pulsa <span className="text-danger">👎</span> en palabras inventadas, mal usadas o tramposas.</li>
+            <li>Si <strong className="text-danger">la mayoría</strong> vota 👎 (más de la mitad de los demás), la palabra queda <strong className="text-danger">inválida (0 pts)</strong>.</li>
+            <li>Por defecto, todas las palabras cuentan como válidas. <strong>No hace falta votar a favor.</strong></li>
+            <li>No puedes votar tu propia palabra.</li>
           </ul>
           <div className="font-bold text-zinc-300 mb-2 text-sm">💰 Puntuación</div>
           <ul className="list-disc list-inside space-y-1">
             <li>Palabra <strong>única</strong>: 10 pts · <strong>repetida</strong>: 5 pts</li>
             <li>Contiene <strong className="text-good">letra bonus</strong>: +3 pts</li>
             <li>Categoría <strong className="text-accent">×2</strong>: puntos dobles</li>
-            <li>Palabra <strong>más larga</strong> válida: +5 pts</li>
+            <li>Palabra <strong>más larga</strong> válida: +5 pts (Empollón)</li>
             <li>Contiene <strong className="text-danger">letra prohibida</strong>: 0 pts (automático)</li>
           </ul>
         </div>
       )}
-
       {!showHelp && (
         <button onClick={() => setShowHelp(true)} className="text-xs text-zinc-600 underline self-start">
           Mostrar instrucciones
@@ -104,12 +96,11 @@ export function Voting({ code, room, userId, isHost, players }: Props) {
                 {players.map((p) => {
                   const entry = answers.find((a) => a.id === p.id)?.words[catIdx];
                   const word = entry?.word?.trim() || "—";
-                  const votesFor = entry?.votesFor || [];
                   const votesAgainst = entry?.votesAgainst || [];
-                  const iVotedFor = votesFor.includes(userId);
                   const iVotedAgainst = votesAgainst.includes(userId);
                   const isMine = p.id === userId;
-                  const losing = votesAgainst.length > votesFor.length && (votesFor.length + votesAgainst.length) > 0;
+                  const eligible = Math.max(0, players.length - 1);
+                  const losing = eligible > 0 && votesAgainst.length > eligible / 2;
 
                   return (
                     <li key={p.id} className="flex items-center gap-2">
@@ -118,36 +109,20 @@ export function Voting({ code, room, userId, isHost, players }: Props) {
                         {word}
                       </span>
                       {!isMine && word !== "—" && (
-                        <div className="flex gap-1 flex-shrink-0">
-                          <button
-                            onClick={() => handleVote(p.id, catIdx, "for")}
-                            className={
-                              "text-xs px-2 py-1 rounded-lg border transition-all " +
-                              (iVotedFor
-                                ? "bg-good/20 text-good border-good/60"
-                                : "border-zinc-700 text-zinc-500 hover:border-good/40")
-                            }
-                          >
-                            👍 {votesFor.length > 0 ? votesFor.length : ""}
-                          </button>
-                          <button
-                            onClick={() => handleVote(p.id, catIdx, "against")}
-                            className={
-                              "text-xs px-2 py-1 rounded-lg border transition-all " +
-                              (iVotedAgainst
-                                ? "bg-danger/20 text-danger border-danger/60"
-                                : "border-zinc-700 text-zinc-500 hover:border-danger/40")
-                            }
-                          >
-                            👎 {votesAgainst.length > 0 ? votesAgainst.length : ""}
-                          </button>
-                        </div>
+                        <button
+                          onClick={() => handleVote(p.id, catIdx)}
+                          className={
+                            "text-xs px-3 py-1.5 rounded-lg border transition-all flex-shrink-0 " +
+                            (iVotedAgainst
+                              ? "bg-danger/20 text-danger border-danger/60"
+                              : "border-zinc-700 text-zinc-500 hover:border-danger/40")
+                          }
+                        >
+                          👎 {votesAgainst.length > 0 ? votesAgainst.length : ""}
+                        </button>
                       )}
-                      {isMine && (votesFor.length > 0 || votesAgainst.length > 0) && (
-                        <span className="text-xs flex gap-2 flex-shrink-0">
-                          {votesFor.length > 0 && <span className="text-good">👍 {votesFor.length}</span>}
-                          {votesAgainst.length > 0 && <span className="text-danger">👎 {votesAgainst.length}</span>}
-                        </span>
+                      {isMine && votesAgainst.length > 0 && (
+                        <span className="text-xs text-danger flex-shrink-0">👎 {votesAgainst.length}</span>
                       )}
                     </li>
                   );
@@ -156,6 +131,23 @@ export function Voting({ code, room, userId, isHost, players }: Props) {
             </div>
           );
         })}
+      </div>
+
+      {/* Acción del host */}
+      <div className="sticky bottom-2 mt-2">
+        {isHost ? (
+          <button
+            onClick={handleCloseVoting}
+            disabled={closing}
+            className="w-full bg-accent text-black font-bold rounded-xl py-4 transition-all active:scale-95 disabled:opacity-50 shadow-lg shadow-accent/20"
+          >
+            {closing ? "Calculando…" : "✅ Cerrar votación y calcular puntos"}
+          </button>
+        ) : (
+          <div className="w-full bg-panel border border-zinc-800 rounded-xl py-3 text-center text-zinc-500 text-sm">
+            Esperando a que el host cierre la votación…
+          </div>
+        )}
       </div>
     </div>
   );

@@ -1,5 +1,6 @@
 "use client";
 import type { Player, Room } from "@/game/types";
+import { DEFAULT_CONFIG } from "@/game/types";
 import { useRound } from "@/hooks/useRound";
 import { nextRound, restartGame } from "@/lib/round";
 import { doc, writeBatch, collection, getDocs } from "firebase/firestore";
@@ -116,7 +117,7 @@ export function Scoreboard({ code, room, isHost, players, isFinished }: Props) {
         )
       ) : isHost ? (
         <button
-          onClick={() => nextRound(code)}
+          onClick={() => nextRound(code, room.config || DEFAULT_CONFIG, room.currentRound + 1)}
           className="bg-accent text-black font-semibold rounded-xl py-3 transition-all active:scale-95"
         >
           Siguiente ronda →

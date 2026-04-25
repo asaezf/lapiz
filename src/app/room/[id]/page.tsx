@@ -4,7 +4,7 @@ import { useAnonAuth } from "@/hooks/useAnonAuth";
 import { useRoom } from "@/hooks/useRoom";
 import { useEffect, useState } from "react";
 import { addPlayer } from "@/lib/rooms";
-import { openCustomSetup } from "@/lib/round";
+import { startGame } from "@/lib/round";
 import { LobbyConfig } from "@/components/game/LobbyConfig";
 import { SetupCustom } from "@/components/game/SetupCustom";
 import { Playing } from "@/components/game/Playing";
@@ -33,8 +33,9 @@ export default function RoomPage() {
   }, [user, room, iAmIn, joining, code, router]);
 
   const handleStart = async () => {
-    if (!isHost) return;
-    await openCustomSetup(code, players);
+    if (!isHost || !room) return;
+    const cfg = room.config || DEFAULT_CONFIG;
+    await startGame(code, players, cfg);
   };
 
   if (loading || !room || !user) {

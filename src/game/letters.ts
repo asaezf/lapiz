@@ -23,14 +23,22 @@ function pick<T>(arr: T[]): T {
   return arr[Math.floor(Math.random() * arr.length)];
 }
 
-export function pickRoundCategories(customCategory: string, count: number): string[] {
+/**
+ * Devuelve `totalCount` categorías para la ronda. Si `customCategory` no está vacía,
+ * la última posición es la custom y se cogen `totalCount - 1` del banco.
+ * Si está vacía, se cogen `totalCount` enteras del banco.
+ */
+export function pickRoundCategories(customCategory: string, totalCount: number): string[] {
   const pool = [...STANDARD_CATEGORIES];
+  const hasCustom = customCategory.trim().length > 0;
+  const standardCount = hasCustom ? Math.max(0, totalCount - 1) : totalCount;
   const chosen: string[] = [];
-  for (let i = 0; i < Math.min(count, pool.length); i++) {
+  const n = Math.min(standardCount, pool.length);
+  for (let i = 0; i < n; i++) {
     const idx = Math.floor(Math.random() * pool.length);
     chosen.push(pool.splice(idx, 1)[0]);
   }
-  chosen.push(customCategory.trim());
+  if (hasCustom) chosen.push(customCategory.trim());
   return chosen;
 }
 
