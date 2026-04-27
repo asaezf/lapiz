@@ -52,6 +52,7 @@ export interface Room {
   // rotación categoría custom
   customCategoryTurnOrder: string[];  // uids en orden joinedAt
   customCategoryCurrentIdx: number;
+  customCategoryCurrentPlayer?: string; // uid del jugador que propone esta ronda
   // config
   config: RoomConfig;
   createdAt: Timestamp;

@@ -38,7 +38,7 @@ export function Voting({ code, room, userId, isHost, players }: Props) {
   };
 
   const eligibleVoters = Math.max(0, players.length - 1);
-  const majorityNeeded = Math.floor(eligibleVoters / 2) + 1; // estricto: > mitad
+  const majorityNeeded = Math.floor(eligibleVoters / 2) + 1;
 
   return (
     <div className="flex flex-col gap-4 flex-1">
@@ -46,41 +46,24 @@ export function Voting({ code, room, userId, isHost, players }: Props) {
       <div className="flex items-center justify-between">
         <h2 className="text-sm uppercase text-zinc-500 font-semibold">Votación</h2>
         <span className="text-xs text-zinc-500">
-          {players.length} jugadores · {majorityNeeded > 0 ? `${majorityNeeded} 👎 = inválida` : ""}
+          {majorityNeeded > 0 ? `${majorityNeeded} 👎 = inválida` : ""}
         </span>
       </div>
 
       {/* Instrucciones */}
       {showHelp && (
         <div className="bg-panel rounded-xl p-3 border border-zinc-800 text-xs text-zinc-400 relative">
-          <button
-            onClick={() => setShowHelp(false)}
-            className="absolute top-2 right-3 text-zinc-600 hover:text-zinc-300 text-sm"
-            aria-label="Cerrar ayuda"
-          >
-            ✕
-          </button>
-          <div className="font-bold text-zinc-300 mb-2 text-sm">📋 Cómo votar</div>
-          <ul className="list-disc list-inside space-y-1 mb-3">
-            <li>Pulsa <span className="text-danger">👎</span> en palabras inventadas, mal usadas o tramposas.</li>
-            <li>Si <strong className="text-danger">la mayoría</strong> vota 👎 (más de la mitad de los demás), la palabra queda <strong className="text-danger">inválida (0 pts)</strong>.</li>
-            <li>Por defecto, todas las palabras cuentan como válidas. <strong>No hace falta votar a favor.</strong></li>
+          <button onClick={() => setShowHelp(false)} className="absolute top-2 right-3 text-zinc-600 hover:text-zinc-300 text-sm" aria-label="Cerrar">✕</button>
+          <div className="font-bold text-zinc-300 mb-1 text-sm">📋 Votación</div>
+          <ul className="list-disc list-inside space-y-0.5">
+            <li>👎 en palabras tramposas o incorrectas.</li>
+            <li>Si <strong className="text-danger">la mayoría</strong> vota 👎 → palabra <strong className="text-danger">inválida (0 pts)</strong>.</li>
             <li>No puedes votar tu propia palabra.</li>
-          </ul>
-          <div className="font-bold text-zinc-300 mb-2 text-sm">💰 Puntuación</div>
-          <ul className="list-disc list-inside space-y-1">
-            <li>Palabra <strong>única</strong>: 10 pts · <strong>repetida</strong>: 5 pts</li>
-            <li>Contiene <strong className="text-good">letra bonus</strong>: +3 pts</li>
-            <li>Categoría <strong className="text-accent">×2</strong>: puntos dobles</li>
-            <li>Palabra <strong>más larga</strong> válida: +5 pts (Empollón)</li>
-            <li>Contiene <strong className="text-danger">letra prohibida</strong>: 0 pts (automático)</li>
           </ul>
         </div>
       )}
       {!showHelp && (
-        <button onClick={() => setShowHelp(true)} className="text-xs text-zinc-600 underline self-start">
-          Mostrar instrucciones
-        </button>
+        <button onClick={() => setShowHelp(true)} className="text-xs text-zinc-600 underline self-start">Mostrar instrucciones</button>
       )}
 
       {/* Respuestas por categoría */}
@@ -89,10 +72,10 @@ export function Voting({ code, room, userId, isHost, players }: Props) {
           const isMult = room.config?.multiplierEnabled !== false && catIdx === room.multiplierCategoryIndex;
           return (
             <div key={catIdx} className="bg-panel rounded-xl p-3 border border-zinc-800">
-              <div className={"text-xs uppercase mb-2 font-semibold " + (isMult ? "text-accent" : "text-zinc-500")}>
+              <div className={"text-xs uppercase mb-3 font-semibold " + (isMult ? "text-accent" : "text-zinc-500")}>
                 {cat}{isMult && " ×2"}
               </div>
-              <ul className="flex flex-col gap-2">
+              <ul className="flex flex-col gap-3">
                 {players.map((p) => {
                   const entry = answers.find((a) => a.id === p.id)?.words[catIdx];
                   const word = entry?.word?.trim() || "—";
@@ -101,28 +84,75 @@ export function Voting({ code, room, userId, isHost, players }: Props) {
                   const isMine = p.id === userId;
                   const eligible = Math.max(0, players.length - 1);
                   const losing = eligible > 0 && votesAgainst.length > eligible / 2;
+                  // Fill: 0→1 de votos actuales hacia la mayoría necesaria
+                  const fillPct = Math.min(100, Math.round((votesAgainst.length / Math.max(1, majorityNeeded)) * 100));
+                  const voterNames = votesAgainst
+                    .map((vid) => players.find((pl) => pl.id === vid)?.nickname)
+                    .filter(Boolean)
+                    .join(", ");
 
                   return (
-                    <li key={p.id} className="flex items-center gap-2">
-                      <span className="text-xs text-zinc-500 w-16 truncate flex-shrink-0">{p.nickname}</span>
-                      <span className={"flex-1 text-sm " + (losing ? "line-through text-zinc-600" : word === "—" ? "text-zinc-600" : "")}>
-                        {word}
-                      </span>
-                      {!isMine && word !== "—" && (
-                        <button
-                          onClick={() => handleVote(p.id, catIdx)}
-                          className={
-                            "text-xs px-3 py-1.5 rounded-lg border transition-all flex-shrink-0 " +
-                            (iVotedAgainst
-                              ? "bg-danger/20 text-danger border-danger/60"
-                              : "border-zinc-700 text-zinc-500 hover:border-danger/40")
-                          }
-                        >
-                          👎 {votesAgainst.length > 0 ? votesAgainst.length : ""}
-                        </button>
-                      )}
-                      {isMine && votesAgainst.length > 0 && (
-                        <span className="text-xs text-danger flex-shrink-0">👎 {votesAgainst.length}</span>
+                    <li key={p.id} className="flex flex-col gap-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-zinc-500 w-16 truncate flex-shrink-0">{p.nickname}</span>
+                        <span className={
+                          "flex-1 text-sm font-medium transition-all " +
+                          (losing
+                            ? "line-through text-zinc-600"
+                            : word === "—" ? "text-zinc-600" : "text-zinc-100")
+                        }>
+                          {word}
+                        </span>
+
+                        {/* Botón dislike con efecto de llenado */}
+                        {!isMine && word !== "—" && (
+                          <button
+                            onClick={() => handleVote(p.id, catIdx)}
+                            className={
+                              "relative overflow-hidden w-16 h-10 rounded-xl border-2 transition-all flex-shrink-0 " +
+                              (losing
+                                ? "border-danger bg-danger/10"
+                                : iVotedAgainst
+                                  ? "border-danger/80"
+                                  : "border-zinc-700 hover:border-danger/50")
+                            }
+                            title={voterNames ? `Votos en contra: ${voterNames}` : "Votar en contra"}
+                          >
+                            {/* Fill rojo de abajo a arriba */}
+                            <span
+                              className="absolute bottom-0 left-0 right-0 bg-danger/30 transition-all duration-300 ease-out"
+                              style={{ height: `${fillPct}%` }}
+                            />
+                            {/* Contenido */}
+                            <span className="relative z-10 flex items-center justify-center gap-1 h-full text-sm font-bold">
+                              <span className={losing ? "text-danger" : iVotedAgainst ? "text-danger" : "text-zinc-400"}>
+                                👎
+                              </span>
+                              {votesAgainst.length > 0 && (
+                                <span className={
+                                  "text-xs tabular-nums " +
+                                  (losing ? "text-danger font-black" : iVotedAgainst ? "text-danger" : "text-zinc-400")
+                                }>
+                                  {votesAgainst.length}
+                                </span>
+                              )}
+                            </span>
+                          </button>
+                        )}
+
+                        {/* Si es mía y hay votos, mostrar contador */}
+                        {isMine && votesAgainst.length > 0 && (
+                          <span className={"text-xs flex-shrink-0 font-bold " + (losing ? "text-danger" : "text-zinc-500")}>
+                            👎 {votesAgainst.length}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Quién ha votado en contra — muy sutil */}
+                      {voterNames && word !== "—" && (
+                        <div className="text-[10px] text-zinc-700 pl-[72px] leading-snug">
+                          {voterNames}
+                        </div>
                       )}
                     </li>
                   );

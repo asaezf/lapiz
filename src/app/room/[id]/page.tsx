@@ -25,7 +25,6 @@ export default function RoomPage() {
 
   useEffect(() => {
     if (!user || !room || iAmIn || joining) return;
-    if (room.status !== "lobby") return;
     const nickname = localStorage.getItem("nickname");
     if (!nickname) { router.push("/"); return; }
     setJoining(true);
@@ -58,7 +57,7 @@ export default function RoomPage() {
         <div className="text-right text-xs text-zinc-500">
           Ronda<br />
           <span className="text-zinc-200 text-base">
-            {room.status === "lobby" ? "—" : `${room.currentRound + 1}/${totalRounds}`}
+            {room.status === "lobby" ? "—" : `${room.currentRound}/${totalRounds}`}
           </span>
         </div>
       </header>
@@ -78,7 +77,7 @@ export default function RoomPage() {
       {room.status === "setup_custom" && (
         <SetupCustom
           code={code}
-          roundIdx={room.currentRound + 1}
+          roundIdx={room.currentRound}
           room={room}
           userId={user.uid}
           players={players}

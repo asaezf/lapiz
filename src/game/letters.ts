@@ -1,5 +1,6 @@
-const MAIN_LETTERS = "ABCDEFGHIJLMNOPRSTUV".split("");
-const ANY_LETTERS = "ABCDEFGHIJLMNOPQRSTUVZ".split("");
+// Abecedario español completo, igual probabilidad para cada letra
+const MAIN_LETTERS = "ABCDEFGHIJKLMNÑOPQRSTUVWXYZ".split("");
+const ANY_LETTERS  = "ABCDEFGHIJKLMNÑOPQRSTUVWXYZ".split("");
 
 export const STANDARD_CATEGORIES = [
   "Nombre",

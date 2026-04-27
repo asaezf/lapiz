@@ -10,15 +10,19 @@ import { calculateScores, type RawAnswer } from "@/game/scoring";
 export const FINISH_TIMER_SECONDS = 20;
 export const FINISH_TIMER_SUBTRACT = 4;
 export const FINISH_TIMER_MIN = 3;
-// Votación sin tiempo: el host la cierra manualmente.
 
 function roomRef(code: string) { return doc(db, "rooms", code); }
 function roundRef(code: string, idx: number) {
   return doc(db, "rooms", code, "rounds", `round_${idx}`);
 }
 
+function pickRandom<T>(arr: T[]): T {
+  return arr[Math.floor(Math.random() * arr.length)];
+}
+
 /**
- * Host pulsa "Empezar partida". Calcula el turnOrder y decide:
+ * Host pulsa "Empezar partida". Elige un jugador aleatorio para proponer
+ * la categoría y decide:
  *  - Si hay categoría inventada → status "setup_custom".
  *  - Si no → arranca la ronda 1 directamente (status "playing").
  */
@@ -28,20 +32,18 @@ export async function startGame(
   config: RoomConfig
 ) {
   const rRef = roomRef(code);
-  const sorted = [...players].sort((a, b) => {
-    const aMs = a.joinedAt?.toMillis?.() ?? 0;
-    const bMs = b.joinedAt?.toMillis?.() ?? 0;
-    return aMs - bMs;
-  });
-  const turnOrder = sorted.map((p) => p.id);
+  const playerIds = players.map((p) => p.id);
+  const randomPlayer = pickRandom(playerIds);
 
   await updateDoc(rRef, {
-    customCategoryTurnOrder: turnOrder,
+    customCategoryTurnOrder: playerIds,
     customCategoryCurrentIdx: 0,
+    customCategoryCurrentPlayer: randomPlayer,
   });
 
   if (config.customCategoryEnabled) {
-    await updateDoc(rRef, { status: "setup_custom" });
+    // Establecemos currentRound:1 para que el header muestre "1/N" durante setup
+    await updateDoc(rRef, { status: "setup_custom", currentRound: 1 });
   } else {
     await startRound(code, 1, "", config);
   }
@@ -53,7 +55,6 @@ export async function openCustomSetup(code: string, players: Array<Player & { id
 }
 
 export async function startRound(code: string, roundIdx: number, customCategory: string, config: RoomConfig) {
-  // Total = solicitado, acotado entre 5 y (banco + 1 si custom activado).
   const maxAllowed = STANDARD_CATEGORIES.length + (config.customCategoryEnabled ? 1 : 0);
   const total = Math.max(5, Math.min(config.categoriesPerRound ?? 5, maxAllowed));
   const customForPick = config.customCategoryEnabled ? customCategory : "";
@@ -88,9 +89,6 @@ export async function saveAnswer(code: string, roundIdx: number, playerId: strin
   await setDoc(ref, { words: { [categoryIndex]: entry } }, { merge: true });
 }
 
-// Jugador pulsa "¡Hecho!" / "STOP" — transaction para evitar races.
-// Modo dynamic: arranca/decrementa timer. Modo classic: solo marca al primer jugador
-// como stopCalledBy; la transición a voting la hace Playing.tsx (host).
 export async function playerDone(code: string, playerId: string, _totalPlayers: number) {
   const rRef = roomRef(code);
   await runTransaction(db, async (tx) => {
@@ -116,18 +114,15 @@ export async function playerDone(code: string, playerId: string, _totalPlayers: 
       }
       update.finishTimerEndsAt = endsAt;
     }
-    // En classic no tocamos finishTimerEndsAt; se queda null.
     tx.update(rRef, update);
   });
 }
 
 export async function moveToVoting(code: string, roundIdx: number) {
-  // Sin timer: la votación dura hasta que el host la cierra.
   await updateDoc(roomRef(code), { status: "voting", votingEndsAt: null });
   await updateDoc(roundRef(code, roundIdx), { stoppedBy: "" });
 }
 
-// Solo votos en contra: toggle del voto del usuario.
 export async function toggleVote(
   code: string, roundIdx: number, authorId: string, categoryIndex: number,
   voterId: string, currentAgainst: string[]
@@ -162,7 +157,7 @@ export async function applyScores(code: string, roundIdx: number, room: Room, pl
     answers: rawAnswers,
   });
 
-  // Bonus por orden de finalización (solo modo dinámico): +2 al 1º, +1 al 2º.
+  // Bonus por orden de finalización (modo dinámico): +2 al 1º, +1 al 2º.
   const finishBonus: Record<string, number> = {};
   const mode = room.config?.gameMode ?? "dynamic";
   if (mode === "dynamic") {
@@ -182,28 +177,34 @@ export async function applyScores(code: string, roundIdx: number, room: Room, pl
     const delta = (result.scoreDelta[pid] || 0) + (finishBonus[pid] || 0);
     if (delta > 0) batch.update(doc(db, "rooms", code, "players", pid), { score: increment(delta) });
   }
-  // Guardar el bonus en la ronda para mostrarlo en el scoreboard.
   if (Object.keys(finishBonus).length > 0) {
     batch.update(roundRef(code, roundIdx), { finishBonus });
   }
   batch.update(roundRef(code, roundIdx), { scoresApplied: true });
 
-  // ¿Fin de partida? currentRound es 0-indexed, totalRounds es el total (e.g. 5)
-  const isLastRound = room.currentRound >= (room.config?.totalRounds ?? 5) - 1;
+  // Fin de partida: currentRound (1-indexed) >= totalRounds
+  const isLastRound = room.currentRound >= (room.config?.totalRounds ?? 5);
   batch.update(roomRef(code), { status: isLastRound ? "finished" : "scoreboard" });
   await batch.commit();
 }
 
 /**
- * Avanza a la siguiente ronda. Si no hay categoría inventada activada,
- * arranca directamente la ronda nueva sin pasar por setup_custom.
+ * Avanza a la siguiente ronda con un proposer aleatorio para categoría custom.
+ * playerIds: lista de todos los UIDs de la sala.
  */
-export async function nextRound(code: string, config: RoomConfig, nextRoundIdx: number) {
+export async function nextRound(
+  code: string,
+  config: RoomConfig,
+  nextRoundIdx: number,
+  playerIds: string[]
+) {
+  const randomPlayer = pickRandom(playerIds);
   await updateDoc(roomRef(code), {
     customCategoryCurrentIdx: increment(1),
+    customCategoryCurrentPlayer: randomPlayer,
   });
   if (config.customCategoryEnabled) {
-    await updateDoc(roomRef(code), { status: "setup_custom" });
+    await updateDoc(roomRef(code), { status: "setup_custom", currentRound: nextRoundIdx });
   } else {
     await startRound(code, nextRoundIdx, "", config);
   }
@@ -224,6 +225,6 @@ export async function restartGame(code: string) {
     stopCalledAt: null,
     votingEndsAt: null,
     customCategoryCurrentIdx: 0,
+    customCategoryCurrentPlayer: null,
   });
-  // Reset all player scores
 }

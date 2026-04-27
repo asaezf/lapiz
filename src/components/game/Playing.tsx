@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { playerDone, moveToVoting, saveAnswer, FINISH_TIMER_SECONDS } from "@/lib/round";
 import type { Room, Player } from "@/game/types";
 import { Tutorial } from "@/components/game/Tutorial";
@@ -13,11 +13,7 @@ interface Props {
   players: Array<Player & { id: string }>;
 }
 
-interface Toast {
-  id: number;
-  text: string;
-  timeAgo: string;
-}
+interface Toast { id: number; text: string; }
 
 let toastId = 0;
 
@@ -33,11 +29,11 @@ export function Playing({ code, room, userId, isHost, players }: Props) {
   const [isDone, setIsDone] = useState(false);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [showTutorial, setShowTutorial] = useState(false);
+  const [stopOverlay, setStopOverlay] = useState<string | null>(null);
 
-  // Mostrar tutorial en la primera ronda si no se ha visto para este modo
+  // Tutorial en primera ronda
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (room.currentRound !== 1) return;
+    if (typeof window === "undefined" || room.currentRound !== 1) return;
     const key = `lapiz_tut_${mode}`;
     if (!localStorage.getItem(key)) setShowTutorial(true);
   }, [room.currentRound, mode]);
@@ -54,29 +50,35 @@ export function Playing({ code, room, userId, isHost, players }: Props) {
   const confettiFired = useRef(false);
   const prevFinished = useRef<string[]>([]);
   const vibratingRef = useRef(false);
+  const stopOverlayTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Timer dinámico — countdown basado en finishTimerEndsAt
+  // *** Reset al cambiar de ronda — evita que aparezcan respuestas de rondas anteriores ***
+  useEffect(() => {
+    setWords(categories.map(() => ""));
+    setIsDone(false);
+    setRemaining(null);
+    setToasts([]);
+    setStopOverlay(null);
+    movedRef.current = false;
+    confettiFired.current = false;
+    prevFinished.current = [];
+    vibratingRef.current = false;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [roundIdx]);
+
+  // Timer dinámico
   const finishMs = room.finishTimerEndsAt ? (room.finishTimerEndsAt as any).toMillis() : null;
-
   useEffect(() => {
     if (!finishMs) { setRemaining(null); return; }
     const tick = () => {
       const left = Math.max(0, Math.ceil((finishMs - Date.now()) / 1000));
       setRemaining(left);
-
-      // Vibración últimos 6 segundos
       if (left <= 6 && left > 0 && !vibratingRef.current) {
         vibratingRef.current = true;
         try { navigator.vibrate?.([200, 100, 200]); } catch {}
       }
       if (left > 6) vibratingRef.current = false;
-
-      // Vibrar cada segundo en los últimos 6
-      if (left <= 6 && left > 0) {
-        try { navigator.vibrate?.(150); } catch {}
-      }
-
-      // Host avanza a voting cuando el timer llega a 0
+      if (left <= 6 && left > 0) { try { navigator.vibrate?.(150); } catch {} }
       if (left === 0 && isHost && !movedRef.current) {
         movedRef.current = true;
         moveToVoting(code, roundIdx).catch(() => { movedRef.current = false; });
@@ -87,9 +89,7 @@ export function Playing({ code, room, userId, isHost, players }: Props) {
     return () => clearInterval(id);
   }, [finishMs, code, roundIdx, isHost]);
 
-  // Avanzar a voting:
-  //  - modo classic: en cuanto haya 1 jugador que pulse STOP → host pasa.
-  //  - modo dynamic: cuando todos han acabado (timer ya cubre el resto).
+  // Avanzar a voting
   useEffect(() => {
     const finished = room.playersFinished || [];
     if (!isHost || movedRef.current) return;
@@ -98,64 +98,56 @@ export function Playing({ code, room, userId, isHost, players }: Props) {
       : finished.length > 0 && finished.length >= players.length;
     if (trigger) {
       movedRef.current = true;
-      // Pequeño delay en classic para dar tiempo a guardar respuestas pendientes.
-      const delay = isClassic ? 600 : 0;
       setTimeout(() => {
         moveToVoting(code, roundIdx).catch(() => { movedRef.current = false; });
-      }, delay);
+      }, isClassic ? 600 : 0);
     }
   }, [room.playersFinished, players.length, isHost, code, roundIdx, isClassic]);
 
-  // Confeti al primer jugador que acaba (si soy yo)
+  // Confeti: primer jugador en acabar, si soy yo
   useEffect(() => {
     if (room.stopCalledBy === userId && !confettiFired.current && room.playersFinished?.includes(userId)) {
       confettiFired.current = true;
-      confetti({
-        particleCount: 120,
-        spread: 80,
-        origin: { y: 0.6 },
-        colors: ["#f5c518", "#22c55e", "#ef4444", "#ffffff"],
-      });
+      confetti({ particleCount: 120, spread: 80, origin: { y: 0.6 }, colors: ["#f5c518", "#22c55e", "#ef4444", "#ffffff"] });
     }
   }, [room.stopCalledBy, room.playersFinished, userId]);
 
-  // Toast notifications cuando otros jugadores acaban
+  // Overlay STOP para los demás (modo clásico)
+  useEffect(() => {
+    if (!isClassic || !room.stopCalledBy || room.stopCalledBy === userId) return;
+    const name = players.find((p) => p.id === room.stopCalledBy)?.nickname || "Alguien";
+    setStopOverlay(name);
+    if (stopOverlayTimer.current) clearTimeout(stopOverlayTimer.current);
+    stopOverlayTimer.current = setTimeout(() => setStopOverlay(null), 2500);
+    return () => { if (stopOverlayTimer.current) clearTimeout(stopOverlayTimer.current); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [room.stopCalledBy]);
+
+  // Toasts cuando otros acaban
   useEffect(() => {
     const finished = room.playersFinished || [];
     const prev = prevFinished.current;
-
     for (const pid of finished) {
       if (!prev.includes(pid) && pid !== userId) {
         const name = players.find((p) => p.id === pid)?.nickname || "???";
         const isFirst = finished.indexOf(pid) === 0 && prev.length === 0;
-        let text: string;
-        if (isClassic) {
-          text = `🛑 ¡${name} ha pulsado STOP!`;
-        } else if (isFirst) {
-          text = `🏁 ¡${name} ha acabado primero!`;
-        } else {
-          text = `⚡ ${name} ha acabado (−4s)`;
-        }
-        setToasts((t) => [...t, { id: ++toastId, text, timeAgo: "ahora" }]);
+        const text = isClassic
+          ? `🛑 ¡${name} ha pulsado STOP!`
+          : isFirst ? `🏁 ¡${name} ha acabado primero!` : `⚡ ${name} ha acabado (−4s)`;
+        setToasts((t) => [...t, { id: ++toastId, text }]);
       }
     }
     prevFinished.current = [...finished];
-  }, [room.playersFinished, userId, players]);
+  }, [room.playersFinished, userId, players, isClassic]);
 
-  // Auto-remove toasts after 4s
   useEffect(() => {
     if (toasts.length === 0) return;
-    const timeout = setTimeout(() => {
-      setToasts((t) => t.slice(1));
-    }, 4000);
-    return () => clearTimeout(timeout);
+    const t = setTimeout(() => setToasts((t) => t.slice(1)), 4000);
+    return () => clearTimeout(t);
   }, [toasts]);
 
-  // Check if I'm already done (e.g. page reload)
   useEffect(() => {
-    if (room.playersFinished?.includes(userId)) {
-      setIsDone(true);
-    }
+    if (room.playersFinished?.includes(userId)) setIsDone(true);
   }, [room.playersFinished, userId]);
 
   const handleChange = (idx: number, v: string) => {
@@ -167,20 +159,15 @@ export function Playing({ code, room, userId, isHost, players }: Props) {
   };
 
   const handleKeyDown = (e: React.KeyboardEvent, idx: number) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      if (idx < categories.length - 1) {
-        inputRefs.current[idx + 1]?.focus();
-      } else {
-        doneButtonRef.current?.focus();
-      }
-    }
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    if (idx < categories.length - 1) inputRefs.current[idx + 1]?.focus();
+    else doneButtonRef.current?.focus();
   };
 
   const handleDone = async () => {
     if (isDone) return;
     setIsDone(true);
-    // Guardar todo primero
     await Promise.all(words.map((w, i) => saveAnswer(code, roundIdx, userId, i, w)));
     await playerDone(code, userId, players.length);
   };
@@ -192,16 +179,26 @@ export function Playing({ code, room, userId, isHost, players }: Props) {
 
   return (
     <div className="flex flex-col gap-4 flex-1 relative">
-      {/* Tutorial modal en primera ronda */}
       {showTutorial && config && <Tutorial config={config} onDismiss={dismissTutorial} />}
 
-      {/* Toast notifications */}
-      <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 flex flex-col gap-2 pointer-events-none w-[90vw] max-w-sm">
+      {/* Overlay pantalla completa al pulsar STOP otro jugador */}
+      {stopOverlay && (
+        <div className="fixed inset-0 z-50 bg-black/95 flex flex-col items-center justify-center text-center px-6">
+          <div className="text-8xl mb-5 animate-bounce">🐢</div>
+          <div className="text-4xl font-black text-danger leading-tight mb-4">
+            ¡¡QUIETOS<br />ESOS DEDOS!!
+          </div>
+          <div className="text-2xl text-zinc-100 font-bold">
+            {stopOverlay} ha acabado ya
+          </div>
+          <div className="text-zinc-500 mt-3 text-base">ya no puedes escribir 🐢</div>
+        </div>
+      )}
+
+      {/* Toasts */}
+      <div className="fixed top-4 left-1/2 -translate-x-1/2 z-40 flex flex-col gap-2 pointer-events-none w-[90vw] max-w-sm">
         {toasts.map((t) => (
-          <div
-            key={t.id}
-            className="bg-zinc-900/95 backdrop-blur border border-zinc-700 rounded-xl px-4 py-2.5 text-sm text-center animate-slide-down shadow-lg"
-          >
+          <div key={t.id} className="bg-zinc-900/95 backdrop-blur border border-zinc-700 rounded-xl px-4 py-2.5 text-sm text-center animate-slide-down shadow-lg">
             {t.text}
           </div>
         ))}
@@ -218,31 +215,17 @@ export function Playing({ code, room, userId, isHost, players }: Props) {
         )}
       </div>
 
-      {/* Timer dinámico grande */}
+      {/* Timer dinámico */}
       {timerActive && (
-        <div
-          className={
-            "rounded-xl p-3 text-center border transition-all " +
-            (remaining !== null && remaining <= 6
-              ? "bg-danger/20 border-danger/60 animate-pulse"
-              : "bg-accent/10 border-accent/40")
-          }
-        >
-          <div className="text-xs uppercase text-zinc-400">
-            {finishedCount}/{players.length} han acabado
-          </div>
-          <div
-            className={
-              "text-5xl font-black tabular-nums " +
-              (remaining !== null && remaining <= 6 ? "text-danger" : "text-accent")
-            }
-          >
+        <div className={"rounded-xl p-3 text-center border transition-all " + (remaining !== null && remaining <= 6 ? "bg-danger/20 border-danger/60 animate-pulse" : "bg-accent/10 border-accent/40")}>
+          <div className="text-xs uppercase text-zinc-400">{finishedCount}/{players.length} han acabado</div>
+          <div className={"text-5xl font-black tabular-nums " + (remaining !== null && remaining <= 6 ? "text-danger" : "text-accent")}>
             {remaining ?? FINISH_TIMER_SECONDS}s
           </div>
         </div>
       )}
 
-      {/* Inputs por categoría */}
+      {/* Inputs */}
       <div className="flex flex-col gap-2">
         {categories.map((cat, i) => {
           const isMult = config?.multiplierEnabled !== false && i === multiplierCategoryIndex;
@@ -260,11 +243,7 @@ export function Playing({ code, room, userId, isHost, players }: Props) {
                 autoComplete="off"
                 autoCapitalize="none"
                 spellCheck={false}
-                className={
-                  "bg-panel rounded-lg px-3 py-2.5 outline-none border transition-colors " +
-                  (isMult ? "border-accent/60" : "border-zinc-800") +
-                  " focus:border-accent disabled:opacity-40"
-                }
+                className={"bg-panel rounded-lg px-3 py-2.5 outline-none border transition-colors " + (isMult ? "border-accent/60" : "border-zinc-800") + " focus:border-accent disabled:opacity-40"}
               />
             </label>
           );
@@ -281,20 +260,13 @@ export function Playing({ code, room, userId, isHost, players }: Props) {
         <button
           ref={doneButtonRef}
           onClick={handleDone}
-          className={
-            "mt-2 font-bold rounded-xl py-4 text-xl transition-all active:scale-95 " +
-            (isClassic
-              ? "bg-danger hover:bg-danger/80 text-white"
-              : "bg-good hover:bg-good/80 text-black")
-          }
+          className={"mt-2 font-bold rounded-xl py-4 text-xl transition-all active:scale-95 " + (isClassic ? "bg-danger hover:bg-danger/80 text-white" : "bg-good hover:bg-good/80 text-black")}
         >
           {isClassic ? "🛑 STOP" : "¡Hecho! ✅"}
         </button>
       ) : (
         <div className="mt-2 bg-zinc-800/50 border border-zinc-700 rounded-xl py-4 text-center">
-          <div className="text-good font-bold text-lg">
-            {isClassic ? "🛑 STOP pulsado" : "¡Listo! ✅"}
-          </div>
+          <div className="text-good font-bold text-lg">{isClassic ? "🛑 STOP pulsado" : "¡Listo! ✅"}</div>
           <div className="text-xs text-zinc-500 mt-1">Esperando al resto de jugadores…</div>
         </div>
       )}

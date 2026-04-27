@@ -15,9 +15,8 @@ export function SetupCustom({ code, roundIdx, room, userId, players }: Props) {
   const [value, setValue] = useState("");
   const [busy, setBusy] = useState(false);
 
-  const turnOrder = room.customCategoryTurnOrder || [];
-  const turnIdx = room.customCategoryCurrentIdx ?? 0;
-  const proposerId = turnOrder.length > 0 ? turnOrder[turnIdx % turnOrder.length] : room.hostId;
+  // Proposer aleatorio elegido en startGame / nextRound
+  const proposerId = room.customCategoryCurrentPlayer || room.hostId;
   const proposerName = players.find((p) => p.id === proposerId)?.nickname || "???";
   const isMyTurn = proposerId === userId;
 

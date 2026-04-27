@@ -2,6 +2,7 @@ import {
   doc,
   getDoc,
   setDoc,
+  updateDoc,
   serverTimestamp,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
@@ -16,12 +17,15 @@ export function generateRoomCode(): string {
   return code;
 }
 
-export async function createRoom(hostId: string, nickname: string): Promise<string> {
-  for (let attempt = 0; attempt < 5; attempt++) {
-    const code = generateRoomCode();
+export async function createRoom(
+  hostId: string,
+  nickname: string,
+  customCode?: string
+): Promise<string> {
+  const tryCreate = async (code: string): Promise<string | null> => {
     const roomRef = doc(db, "rooms", code);
     const existing = await getDoc(roomRef);
-    if (existing.exists()) continue;
+    if (existing.exists()) return null;
 
     const room = {
       code,
@@ -33,44 +37,56 @@ export async function createRoom(hostId: string, nickname: string): Promise<stri
       bonusLetter: null,
       categories: [] as string[],
       multiplierCategoryIndex: null,
-      // timer dinámico
       finishTimerEndsAt: null,
       playersFinished: [] as string[],
       stopCalledBy: null,
-      // legado
       stopCalledAt: null,
       votingEndsAt: null,
-      // rotación categoría custom
       customCategoryTurnOrder: [] as string[],
       customCategoryCurrentIdx: 0,
-      // config
+      customCategoryCurrentPlayer: null,
       config: DEFAULT_CONFIG,
       createdAt: serverTimestamp(),
     };
     await setDoc(roomRef, room);
     await addPlayer(code, hostId, nickname);
     return code;
+  };
+
+  if (customCode) {
+    const result = await tryCreate(customCode.toUpperCase().trim());
+    if (!result) throw new Error("Ese código ya está en uso, elige otro");
+    return result;
+  }
+
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const result = await tryCreate(generateRoomCode());
+    if (result) return result;
   }
   throw new Error("No se pudo generar código único");
 }
 
 export async function addPlayer(roomCode: string, playerId: string, nickname: string) {
   const playerRef = doc(db, "rooms", roomCode, "players", playerId);
-  const player: Omit<Player, "joinedAt"> & { joinedAt: ReturnType<typeof serverTimestamp> } = {
-    nickname,
-    score: 0,
-    isReady: false,
-    joinedAt: serverTimestamp(),
-  };
-  await setDoc(playerRef, player, { merge: true });
+  const existing = await getDoc(playerRef);
+  if (existing.exists()) {
+    // Rejoin: solo actualizamos el nick, conservamos puntuación
+    await updateDoc(playerRef, { nickname });
+  } else {
+    const player: Omit<Player, "joinedAt"> & { joinedAt: ReturnType<typeof serverTimestamp> } = {
+      nickname,
+      score: 0,
+      isReady: false,
+      joinedAt: serverTimestamp(),
+    };
+    await setDoc(playerRef, player);
+  }
 }
 
 export async function joinRoom(code: string, playerId: string, nickname: string): Promise<void> {
   const roomRef = doc(db, "rooms", code);
   const snap = await getDoc(roomRef);
   if (!snap.exists()) throw new Error("Sala no encontrada");
-  const room = snap.data() as Room;
-  if (room.status !== "lobby") throw new Error("La partida ya empezó");
   await addPlayer(code, playerId, nickname);
 }
 
@@ -80,6 +96,5 @@ export async function updateRoomConfig(code: string, config: Partial<RoomConfig>
   for (const [k, v] of Object.entries(config)) {
     updates[`config.${k}`] = v;
   }
-  const { updateDoc } = await import("firebase/firestore");
   await updateDoc(roomRef, updates);
 }
