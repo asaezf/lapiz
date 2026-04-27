@@ -92,66 +92,62 @@ export function Voting({ code, room, userId, isHost, players }: Props) {
                     .join(", ");
 
                   return (
-                    <li key={p.id} className="flex flex-col gap-1">
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs text-zinc-500 w-16 truncate flex-shrink-0">{p.nickname}</span>
-                        <span className={
-                          "flex-1 text-sm font-medium transition-all " +
-                          (losing
-                            ? "line-through text-zinc-600"
-                            : word === "—" ? "text-zinc-600" : "text-zinc-100")
-                        }>
-                          {word}
-                        </span>
+                    <li key={p.id} className="flex items-start gap-2">
+                      <span className="text-xs text-zinc-500 w-16 truncate flex-shrink-0 pt-1">{p.nickname}</span>
+                      <span className={
+                        "flex-1 text-sm font-medium transition-all pt-1 " +
+                        (losing ? "line-through text-zinc-600" : word === "—" ? "text-zinc-600" : "text-zinc-100")
+                      }>
+                        {word}
+                      </span>
 
-                        {/* Botón dislike con efecto de llenado */}
-                        {!isMine && word !== "—" && (
+                      {/* Botón dislike + nombres debajo */}
+                      {!isMine && word !== "—" && (
+                        <div className="flex flex-col items-center flex-shrink-0">
                           <button
                             onClick={() => handleVote(p.id, catIdx)}
                             className={
-                              "relative overflow-hidden w-16 h-10 rounded-xl border-2 transition-all flex-shrink-0 " +
+                              "relative overflow-hidden w-16 h-10 rounded-xl border-2 transition-all " +
                               (losing
                                 ? "border-danger bg-danger/10"
                                 : iVotedAgainst
                                   ? "border-danger/80"
                                   : "border-zinc-700 hover:border-danger/50")
                             }
-                            title={voterNames ? `Votos en contra: ${voterNames}` : "Votar en contra"}
                           >
-                            {/* Fill rojo de abajo a arriba */}
                             <span
                               className="absolute bottom-0 left-0 right-0 bg-danger/30 transition-all duration-300 ease-out"
                               style={{ height: `${fillPct}%` }}
                             />
-                            {/* Contenido */}
                             <span className="relative z-10 flex items-center justify-center gap-1 h-full text-sm font-bold">
-                              <span className={losing ? "text-danger" : iVotedAgainst ? "text-danger" : "text-zinc-400"}>
-                                👎
-                              </span>
+                              <span className={losing ? "text-danger" : iVotedAgainst ? "text-danger" : "text-zinc-400"}>👎</span>
                               {votesAgainst.length > 0 && (
-                                <span className={
-                                  "text-xs tabular-nums " +
-                                  (losing ? "text-danger font-black" : iVotedAgainst ? "text-danger" : "text-zinc-400")
-                                }>
+                                <span className={"text-xs tabular-nums " + (losing ? "text-danger font-black" : iVotedAgainst ? "text-danger" : "text-zinc-400")}>
                                   {votesAgainst.length}
                                 </span>
                               )}
                             </span>
                           </button>
-                        )}
+                          {/* Quién votó — debajo del botón */}
+                          {voterNames && (
+                            <div className="text-[9px] text-zinc-600 text-center leading-tight mt-0.5 max-w-[64px] break-words">
+                              {voterNames}
+                            </div>
+                          )}
+                        </div>
+                      )}
 
-                        {/* Si es mía y hay votos, mostrar contador */}
-                        {isMine && votesAgainst.length > 0 && (
-                          <span className={"text-xs flex-shrink-0 font-bold " + (losing ? "text-danger" : "text-zinc-500")}>
+                      {/* Si es mía y hay votos */}
+                      {isMine && votesAgainst.length > 0 && (
+                        <div className="flex flex-col items-center flex-shrink-0">
+                          <span className={"text-xs font-bold pt-1 " + (losing ? "text-danger" : "text-zinc-500")}>
                             👎 {votesAgainst.length}
                           </span>
-                        )}
-                      </div>
-
-                      {/* Quién ha votado en contra — muy sutil */}
-                      {voterNames && word !== "—" && (
-                        <div className="text-[10px] text-zinc-700 pl-[72px] leading-snug">
-                          {voterNames}
+                          {voterNames && (
+                            <div className="text-[9px] text-zinc-600 text-center leading-tight mt-0.5 max-w-[64px] break-words">
+                              {voterNames}
+                            </div>
+                          )}
                         </div>
                       )}
                     </li>

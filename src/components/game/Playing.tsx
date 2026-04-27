@@ -118,7 +118,7 @@ export function Playing({ code, room, userId, isHost, players }: Props) {
     const name = players.find((p) => p.id === room.stopCalledBy)?.nickname || "Alguien";
     setStopOverlay(name);
     if (stopOverlayTimer.current) clearTimeout(stopOverlayTimer.current);
-    stopOverlayTimer.current = setTimeout(() => setStopOverlay(null), 2500);
+    stopOverlayTimer.current = setTimeout(() => setStopOverlay(null), 5000);
     return () => { if (stopOverlayTimer.current) clearTimeout(stopOverlayTimer.current); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [room.stopCalledBy]);

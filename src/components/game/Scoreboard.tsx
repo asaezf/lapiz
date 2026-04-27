@@ -130,19 +130,17 @@ export function Scoreboard({ code, room, isHost, players, isFinished }: Props) {
                       const word = entry?.word?.trim() || "";
                       const breakdown = entry ? buildBreakdown(entry, word, ci, answers, room) : "";
                       return (
-                        <div key={p.id} className="grid grid-cols-[5rem_1fr_auto] gap-1 text-xs py-0.5 items-baseline">
+                        <div key={p.id} className="grid grid-cols-[4rem_1fr_2rem_auto] gap-x-2 text-xs py-0.5 items-baseline">
                           <span className="text-zinc-500 truncate">{p.nickname}</span>
                           <span className={entry?.isValid ? "text-zinc-200" : "text-zinc-600 line-through"}>
                             {word || "—"}
                           </span>
-                          <div className="text-right">
-                            <span className={entry?.isValid ? "text-good font-bold" : "text-zinc-600"}>
-                              {entry?.isValid ? `+${entry.points}` : "0"}
-                            </span>
-                            {breakdown && (
-                              <div className="text-[10px] text-zinc-500 leading-tight">{breakdown}</div>
-                            )}
-                          </div>
+                          <span className={"text-center font-bold " + (entry?.isValid ? "text-good" : "text-zinc-600")}>
+                            {entry?.isValid ? `+${entry.points}` : "0"}
+                          </span>
+                          <span className="text-[10px] text-zinc-500 leading-tight">
+                            {breakdown}
+                          </span>
                         </div>
                       );
                     })}

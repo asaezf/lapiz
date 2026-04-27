@@ -103,7 +103,6 @@ export default function HomePage() {
                 autoComplete="off"
                 spellCheck={false}
                 autoFocus
-                placeholder="Tu nombre"
                 className="bg-panel rounded-lg px-4 py-3 text-lg outline-none border border-zinc-800 focus:border-accent"
               />
               {nickError && <span className="text-danger text-xs">{nickError}</span>}
@@ -158,10 +157,9 @@ export default function HomePage() {
                     maxLength={5}
                     autoComplete="off"
                     spellCheck={false}
-                    placeholder="ABCDE — o déjalo vacío"
                     className="bg-panel rounded-lg px-4 py-3 text-lg tracking-[0.4em] text-center uppercase outline-none border border-zinc-800 focus:border-accent"
                   />
-                  <span className="text-[11px] text-zinc-600">5 letras/números. Si lo dejas vacío se genera uno aleatorio.</span>
+                  <span className="text-[11px] text-zinc-600">5 letras/números — vacío para código aleatorio</span>
                 </label>
                 <div className="flex gap-2">
                   <button
@@ -193,7 +191,6 @@ export default function HomePage() {
                     autoComplete="off"
                     spellCheck={false}
                     autoFocus
-                    placeholder="ABCDE"
                     className="bg-panel rounded-lg px-4 py-3 text-xl tracking-[0.5em] text-center uppercase outline-none border border-zinc-800 focus:border-accent"
                   />
                 </label>
