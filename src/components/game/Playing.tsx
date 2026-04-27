@@ -98,9 +98,10 @@ export function Playing({ code, room, userId, isHost, players }: Props) {
       : finished.length > 0 && finished.length >= players.length;
     if (trigger) {
       movedRef.current = true;
+      // En clásico esperamos 4s para que se pueda leer el overlay "QUIETOS ESOS DEDOS"
       setTimeout(() => {
         moveToVoting(code, roundIdx).catch(() => { movedRef.current = false; });
-      }, isClassic ? 600 : 0);
+      }, isClassic ? 4000 : 0);
     }
   }, [room.playersFinished, players.length, isHost, code, roundIdx, isClassic]);
 
